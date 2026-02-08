@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MTG Arena Deck Analyzer v5</title>
+<style>
+  :root {
+    --bg-deep: #0d0f14;
+    --bg-card: #161922;
+    --bg-input: #1c1f2b;
+    --border: #2a2e3d;
+    --text: #e2e4eb;
+    --text-muted: #8890a4;
+    --text-dim: #5c6378;
+    --gold: #eebb55;
+    --mythic: #d86638;
+    --rare: #c9a84c;
+    --uncommon: #8fbcd4;
+    --common: #a8aebf;
+    --green: #2dd47b;
+    --red: #e94560;
+    --purple: #a56de2; 
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg-deep); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; padding-bottom: 50px; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px; display: grid; grid-template-columns: 1fr 320px; gap: 24px; }
+  
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+
+  h1 { grid-column: 1 / -1; text-align: center; font-size: 24px; color: var(--gold); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; }
+  
+  /* Inputs */
+  .panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+  textarea {
+    width: 100%; height: 200px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-family: monospace; font-size: 13px; padding: 14px; resize: vertical; outline: none;
+  }
+  textarea:focus { border-color: var(--gold); }
+  
+  .controls { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-top: 10px; }
+  select { background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px; outline: none; }
+  .btn {
+    background: linear-gradient(135deg, #c9a84c, #a8872e); color: #0d0f14; border: none; border-radius: 8px;
+    padding: 0 24px; font-weight: 700; text-transform: uppercase; cursor: pointer; transition: filter 0.2s;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .btn:disabled { opacity: 0.5; cursor: wait; filter: grayscale(1); }
+
+  /* Output Areas */
+  .main-col { display: flex; flex-direction: column; gap: 20px; }
+  .side-col { display: flex; flex-direction: column; gap: 20px; }
+
+  /* Stats Cards */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .stat-box { background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 10px 5px; text-align: center; }
+  .stat-num { font-size: 18px; font-weight: 700; display: block; }
+  .stat-lbl { font-size: 10px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
+
+  /* Mana Curve */
+  .curve-box { height: 120px; display: flex; align-items: flex-end; justify-content: space-between; gap: 4px; padding: 10px 0; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; }
+  .bar { width: 100%; background: var(--text-dim); border-radius: 3px 3px 0 0; transition: height 0.3s; min-height: 1px; }
+  .bar-lbl { font-size: 10px; margin-top: 5px; color: var(--text-muted); }
+
+  /* Card Lists */
+  .section { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .section-head {
+    padding: 12px 16px; background: rgba(255,255,255,0.03); cursor: pointer; font-size: 13px; font-weight: 600; text-transform: uppercase;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-body { overflow: hidden; max-height: 2000px; transition: max-height 0.3s; }
+  .section-body.closed { max-height: 0; }
+  
+  .row {
+    padding: 8px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; font-size: 13px;
+    position: relative; cursor: default;
+  }
+  .row:hover { background: rgba(255,255,255,0.02); }
+  .row:last-child { border-bottom: none; }
+  .qty { width: 30px; color: var(--text-dim); font-family: monospace; }
+  .name { flex: 1; color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--text-dim); cursor: help; }
+  .name:hover { color: var(--gold); border-color: var(--gold); }
+  .mana { margin-left: 10px; font-size: 11px; color: var(--text-muted); letter-spacing: 1px; }
+  .rarity-dot { width: 8px; height: 8px; border-radius: 50%; margin-left: 10px; }
+
+  /* Copy Button */
+  .copy-btn {
+    width: 100%; background: transparent; border: 1px solid var(--green); color: var(--green); border-radius: 8px;
+    padding: 10px; font-weight: 600; font-size: 13px; cursor: pointer; margin-top: 15px; display: none;
+    transition: all 0.2s;
+  }
+  .copy-btn:hover { background: rgba(45, 212, 123, 0.1); }
+  .copy-btn.ok { background: var(--green); color: #000; border-color: var(--green); }
+
+  /* Floating Image Preview (Follows Mouse) */
+  #preview {
+    position: fixed; width: 220px; border-radius: 12px; border: 2px solid #000;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.8); pointer-events: none; z-index: 9999; 
+    opacity: 0; transition: opacity 0.15s;
+    background: var(--bg-card); display: none;
+  }
+  #preview.show { opacity: 1; display: block; }
+  
+  /* Utilities */
+  .err { color: var(--red); font-size: 13px; margin-top: 8px; text-align: center; }
+  .hidden { display: none; }
+  
+  /* Rarity Colors */
+  .r-common { background: var(--common); color: var(--common); }
+  .r-uncommon { background: var(--uncommon); color: var(--uncommon); }
+  .r-rare { background: var(--rare); color: var(--rare); }
+  .r-mythic { background: var(--mythic); color: var(--mythic); }
+
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Arena Deck Analyzer</h1>
+
+  <div class="main-col">
+    <div class="panel">
+      <textarea id="deck" placeholder="Commander
+1 Atraxa, Praetors' Voice
+
+Deck
+1 Sol Ring
+1 Arcane Signet
+1 Swords to Plowshares"></textarea>
+      <div class="controls">
+        <select id="fmt">
+          <option value="historicbrawl" selected>Historic Brawl</option>
+          <option value="standardbrawl">Standard Brawl</option>
+          <option value="timeless">Timeless</option>
+          <option value="historic">Historic</option>
+          <option value="explorer">Explorer</option>
+          <option value="standard">Standard</option>
+          <option value="alchemy">Alchemy</option>
+        </select>
+        <button class="btn" id="go" onclick="run()">Analyze</button>
+      </div>
+      <div class="err" id="err"></div>
+    </div>
+
+    <div id="deck-list"></div>
+  </div>
+
+  <div class="side-col">
+    <div id="stats-panel" class="hidden">
+      
+      <div class="panel">
+        <label>Wildcards Needed</label>
+        <div class="stats-grid" style="margin-top:10px">
+          <div class="stat-box" style="border-color:var(--mythic)">
+            <span class="stat-num" style="color:var(--mythic)" id="wc-m">0</span><span class="stat-lbl">Mythic</span>
+          </div>
+          <div class="stat-box" style="border-color:var(--rare)">
+            <span class="stat-num" style="color:var(--rare)" id="wc-r">0</span><span class="stat-lbl">Rare</span>
+          </div>
+          <div class="stat-box" style="border-color:var(--uncommon)">
+            <span class="stat-num" style="color:var(--uncommon)" id="wc-u">0</span><span class="stat-lbl">Unc</span>
+          </div>
+          <div class="stat-box" style="border-color:var(--common)">
+            <span class="stat-num" style="color:var(--common)" id="wc-c">0</span><span class="stat-lbl">Com</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <label>Mana Curve</label>
+        <div class="curve-box" id="curve-chart"></div>
+      </div>
+
+      <div class="panel">
+        <label>Legality Check</label>
+        <div id="legality-summary" style="margin-top:10px; font-size:14px;"></div>
+        <button id="copy-btn" class="copy-btn" onclick="copyLegal()">📋 Copy Legal Cards</button>
+      </div>
+      
+    </div>
+  </div>
+</div>
+
+<img id="preview" src="" alt="Card Preview">
+
+<script>
+// --- Core Logic ---
+
+function parse(text) {
+  const lines = text.trim().split('\n'), cards = [];
+  let sec = 'deck';
+  for (let l of lines) {
+    l = l.trim();
+    if (!l) continue;
+    const lo = l.toLowerCase();
+    if (['commander','companion','deck','sideboard'].includes(lo)) { sec = lo; continue; }
+    const m = l.match(/^(\d+)\s*x?\s+(.+)$/i);
+    if (m) cards.push({ qty: +m[1], name: m[2].trim(), sec });
+    else cards.push({ qty: 1, name: l, sec });
+  }
+  return cards;
+}
+
+async function fetchBatch(names) {
+  const uniq = [...new Set(names)];
+  const results = [];
+  for (let i = 0; i < uniq.length; i += 75) {
+    const batch = uniq.slice(i, i + 75).map(n => ({ name: n }));
+    const resp = await fetch('https://api.scryfall.com/cards/collection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifiers: batch })
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      results.push(...data.data);
+    }
+    if (i + 75 < uniq.length) await new Promise(r => setTimeout(r, 75));
+  }
+  return results;
+}
+
+async function run() {
+  const txt = document.getElementById('deck').value;
+  const fmt = document.getElementById('fmt').value;
+  const fmtLabel = document.getElementById('fmt').selectedOptions[0].text;
+  const btn = document.getElementById('go');
+  const err = document.getElementById('err');
+  
+  if (!txt.trim()) { err.textContent = 'Please enter a decklist.'; return; }
+  
+  btn.disabled = true; btn.textContent = 'Loading...';
+  err.textContent = '';
+  document.getElementById('deck-list').innerHTML = '';
+  document.getElementById('stats-panel').classList.add('hidden');
+  document.getElementById('copy-btn').style.display = 'none';
+
+  try {
+    const cards = parse(txt);
+    const data = await fetchBatch(cards.map(c => c.name));
+    const map = {};
+    data.forEach(d => map[d.name.toLowerCase()] = d);
+
+    // Analysis Buckets
+    const res = { legal: [], illegal: [], notOnArena: [], banned: [], notFound: [] };
+    const stats = { m:0, r:0, u:0, c:0, curve: [0,0,0,0,0,0,0,0] }; // Curve 0-7+
+
+    const arenaFormats = ['historic', 'timeless', 'explorer', 'brawl', 'standard', 'alchemy', 'historicbrawl'];
+
+    for (const c of cards) {
+      const d = map[c.name.toLowerCase()]; 
+      if (!d) { res.notFound.push(c); continue; }
+      
+      const cardObj = { ...c, data: d };
+      
+      // 1. Arena Existence Check
+      const onArena = arenaFormats.some(f => ['legal','restricted','banned'].includes(d.legalities[f]));
+      
+      if (!onArena) {
+        res.notOnArena.push(cardObj);
+        continue;
+      }
+
+      // 2. Legality Check
+      const leg = d.legalities[fmt];
+      if (leg === 'banned') { res.banned.push(cardObj); continue; }
+      if (leg === 'not_legal') { res.illegal.push({...cardObj, reason: `Not ${fmtLabel} legal`}); continue; }
+      if (leg === 'restricted' && c.qty > 1) { res.illegal.push({...cardObj, reason: 'Restricted (1 max)'}); continue; }
+
+      // 3. Stats Collection
+      res.legal.push(cardObj);
+      
+      // Rarity (Skip Basic Lands)
+      if (!d.type_line.includes('Basic Land')) {
+        const r = d.rarity; 
+        if (r === 'mythic') stats.m += c.qty;
+        else if (r === 'rare') stats.r += c.qty;
+        else if (r === 'uncommon') stats.u += c.qty;
+        else stats.c += c.qty;
+      }
+
+      // Curve (Skip Lands)
+      if (!d.type_line.includes('Land')) {
+        let cmc = Math.floor(d.cmc || 0);
+        if (cmc > 7) cmc = 7;
+        stats.curve[cmc] += c.qty;
+      }
+    }
+
+    render(res, stats, fmtLabel);
+    
+    // Store legal cards globally for the copy function
+    window._legalCards = res.legal;
+
+  } catch (e) {
+    console.error(e);
+    err.textContent = 'Error connecting to Scryfall API.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Analyze';
+  }
+}
+
+// --- UI Rendering ---
+
+function render(res, stats, fmt) {
+  // 1. Update Stats
+  document.getElementById('wc-m').textContent = stats.m;
+  document.getElementById('wc-r').textContent = stats.r;
+  document.getElementById('wc-u').textContent = stats.u;
+  document.getElementById('wc-c').textContent = stats.c;
+
+  // 2. Draw Curve
+  const maxH = Math.max(...stats.curve, 1);
+  const chart = document.getElementById('curve-chart');
+  chart.innerHTML = stats.curve.map((val, i) => {
+    const h = (val / maxH) * 100;
+    const label = i === 7 ? '7+' : i;
+    return `
+      <div class="bar-col">
+        <div class="bar" style="height:${h}%; background: ${val>0?'var(--gold)':'var(--border)'}"></div>
+        <div class="bar-lbl">${label}</div>
+      </div>`;
+  }).join('');
+
+  // 3. Legality Summary
+  const legDiv = document.getElementById('legality-summary');
+  const valid = res.illegal.length === 0 && res.banned.length === 0 && res.notOnArena.length === 0;
+  if (valid) {
+    legDiv.innerHTML = `<span style="color:var(--green)">✓ Deck is Legal in ${fmt}</span>`;
+  } else {
+    legDiv.innerHTML = `
+      <div style="color:var(--red)">Issues Found:</div>
+      ${res.notOnArena.length ? `<div>• ${res.notOnArena.length} Not on Arena</div>` : ''}
+      ${res.banned.length ? `<div>• ${res.banned.length} Banned</div>` : ''}
+      ${res.illegal.length ? `<div>• ${res.illegal.length} Not Legal</div>` : ''}
+    `;
+  }
+
+  // Show Copy Button if there are legal cards
+  if (res.legal.length > 0) {
+    document.getElementById('copy-btn').style.display = 'block';
+  }
+
+  document.getElementById('stats-panel').classList.remove('hidden');
+
+  // 4. Build List
+  let h = '';
+  if (res.notOnArena.length) h += section('Not On Arena', res.notOnArena, 'var(--purple)');
+  if (res.banned.length) h += section('Banned', res.banned, 'var(--red)');
+  if (res.illegal.length) h += section('Illegal / Errors', res.illegal, 'var(--red)');
+  if (res.notFound.length) h += section('Not Found', res.notFound, 'var(--text-dim)');
+  
+  const creatures = res.legal.filter(c => c.data.type_line.includes('Creature'));
+  const lands = res.legal.filter(c => c.data.type_line.includes('Land') && !c.data.type_line.includes('Creature'));
+  const spells = res.legal.filter(c => !c.data.type_line.includes('Creature') && !c.data.type_line.includes('Land'));
+
+  if (creatures.length) h += section(`Creatures (${count(creatures)})`, creatures, 'var(--text)');
+  if (spells.length) h += section(`Spells (${count(spells)})`, spells, 'var(--text)');
+  if (lands.length) h += section(`Lands (${count(lands)})`, lands, 'var(--text)');
+
+  document.getElementById('deck-list').innerHTML = h;
+  
+  // Re-attach listeners for accordions
+  document.querySelectorAll('.section-head').forEach(el => {
+    el.addEventListener('click', () => {
+      el.nextElementSibling.classList.toggle('closed');
+    });
+  });
+}
+
+function count(arr) { return arr.reduce((a,b) => a + b.qty, 0); }
+
+function section(title, cards, color) {
+  const rows = cards.map(c => {
+    const d = c.data || {};
+    let img = d.image_uris?.normal;
+    if (!img && d.card_faces) img = d.card_faces[0].image_uris?.normal;
+    
+    let mana = d.mana_cost || '';
+    if (!mana && d.card_faces) mana = d.card_faces[0].mana_cost;
+    mana = mana.replace(/[{}]/g, '');
+
+    // Add data-img attribute for hover
+    return `
+      <div class="row">
+        <span class="qty">${c.qty}</span>
+        <a href="#" class="name" data-img="${img}">${c.name}</a>
+        <span class="mana">${mana}</span>
+        <span class="rarity-dot r-${d.rarity}" title="${d.rarity}"></span>
+        ${c.reason ? `<span style="color:var(--red);font-size:11px;margin-left:auto">${c.reason}</span>` : ''}
+      </div>`;
+  }).join('');
+
+  return `<div class="section" style="border-left:3px solid ${color}; margin-bottom:10px">
+    <div class="section-head" style="color:${color}">${title}</div>
+    <div class="section-body">${rows}</div>
+  </div>`;
+}
+
+function copyLegal() {
+  const cards = window._legalCards || [];
+  if (!cards.length) return;
+  
+  const secs = {};
+  for (const c of cards) { 
+    const s = c.sec || 'deck'; 
+    if(!secs[s]) secs[s]=[]; 
+    secs[s].push(c); 
+  }
+  
+  let t = '';
+  // Force Commander first
+  if (secs['commander']) {
+    t += 'Commander\n' + secs['commander'].map(c=>`${c.qty} ${c.name}`).join('\n') + '\n\n';
+    delete secs['commander'];
+  }
+  for (const s in secs) {
+    t += s.charAt(0).toUpperCase() + s.slice(1) + '\n';
+    t += secs[s].map(c=>`${c.qty} ${c.name}`).join('\n') + '\n\n';
+  }
+
+  navigator.clipboard.writeText(t.trim()).then(() => {
+    const b = document.getElementById('copy-btn');
+    const oldText = b.textContent;
+    b.textContent = '✓ Copied!';
+    b.classList.add('ok');
+    setTimeout(() => { 
+        b.textContent = oldText; 
+        b.classList.remove('ok');
+    }, 2000);
+  });
+}
+
+// --- Hover Logic (Follow Mouse) ---
+const preview = document.getElementById('preview');
+
+document.addEventListener('mouseover', function(e) {
+  if (e.target.classList.contains('name')) {
+    const imgUrl = e.target.getAttribute('data-img');
+    if (imgUrl && imgUrl !== 'undefined') {
+      preview.src = imgUrl;
+      preview.classList.add('show');
+    }
+  }
+});
+
+document.addEventListener('mouseout', function(e) {
+  if (e.target.classList.contains('name')) {
+    preview.classList.remove('show');
+  }
+});
+
+document.addEventListener('mousemove', function(e) {
+  if (preview.classList.contains('show')) {
+    // Offset slightly from cursor
+    let x = e.clientX + 15;
+    let y = e.clientY + 15;
+    
+    // Prevent going off screen (right edge)
+    if (x + 220 > window.innerWidth) {
+      x = e.clientX - 235; // Flip to left
+    }
+    // Prevent going off screen (bottom edge)
+    if (y + 300 > window.innerHeight) {
+        y = e.clientY - 300; // Flip to top
+    }
+    
+    preview.style.left = x + 'px';
+    preview.style.top = y + 'px';
+  }
+});
+
+</script>
+</body>
+</html>
