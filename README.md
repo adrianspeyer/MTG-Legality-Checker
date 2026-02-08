@@ -1,7 +1,3 @@
-Here is a professional `README.md` file you can include with your project. It documents all the features we built, including the latest additions like the wildcard calculator and mouse-follow card previews.
-
----
-
 # MTG Arena Deck Analyzer
 
 A lightweight, browser-based tool to check deck legality, calculate wildcard costs, and visualize mana curves for Magic: The Gathering Arena.
