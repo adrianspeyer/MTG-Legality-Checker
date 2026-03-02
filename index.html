@@ -125,20 +125,14 @@
 
   <div class="main-col">
     <div class="panel">
-      <textarea id="deck" placeholder="Commander
+      <textarea id="deck" placeholder="Paste from Arena, Moxfield, Decked Builder, ManaBox...
+
+Commander
 1 Atraxa, Praetors' Voice
 
 Deck
 1 Sol Ring
 1 Arcane Signet
-1 Swords to Plowshares
-
-Also supports Decked Builder exports:
-Command Zone
-Giada, Font of Hope
-
-Creatures(29)
-1 Angel of Sanctions
 1 Ojer Taq, Deepest Foundation // Temple of Civilization"></textarea>
       <div class="controls">
         <select id="fmt">
@@ -217,11 +211,18 @@ function parse(text) {
 
   // Matches known section headers + deckbuilder type headers, with optional count in parens
   // e.g. "Command Zone", "Main Deck (99)", "Creatures(29)", "Sideboard (4)"
-  const sectionLineRe = /^(command zone|commander|companion|deck|sideboard|main deck|creatures?|spells?|lands?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?|battles?)(\s*\(\d+\))?$/i;
+  // Also matches ManaBox-style "//Commander", "//Deck", "//Sideboard"
+  const sectionLineRe = /^\/?\/?\.?\s*(command zone|commander|companion|deck|sideboard|main deck|creatures?|spells?|lands?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?|battles?)(\s*\(\d+\))?$/i;
+
+  // Lines to skip entirely (app signatures, metadata)
+  const skipLineRe = /^(built with |exported |generated |\/\/\s*$|about:|format:|date:)/i;
 
   for (let l of lines) {
     l = l.trim();
     if (!l) continue;
+
+    // Skip app signatures and metadata lines
+    if (skipLineRe.test(l)) continue;
 
     // Check if line is a section header
     const secMatch = l.match(sectionLineRe);
@@ -243,6 +244,9 @@ function parse(text) {
       qty = +m[1];
       rawName = m[2].trim();
     }
+
+    // Strip ManaBox set/collector info: "(SET) 123" or "(SET) 123 *F*" etc.
+    rawName = rawName.replace(/\s+\([A-Z0-9]+\)\s*\S*$/, '').trim();
 
     // Handle double-faced cards: strip " // Back Face" for Scryfall lookup
     // Preserve full name for display
@@ -299,7 +303,13 @@ async function run() {
     const cards = parse(txt);
     const data = await fetchBatch(cards.map(c => c.name));
     const map = {};
-    data.forEach(d => map[d.name.toLowerCase()] = d);
+    data.forEach(d => {
+      map[d.name.toLowerCase()] = d;
+      // Also map by front face name for double-faced cards
+      if (d.name.includes(' // ')) {
+        map[d.name.split(' // ')[0].trim().toLowerCase()] = d;
+      }
+    });
 
     // Analysis Buckets
     const res = { legal: [], illegal: [], notOnArena: [], banned: [], notFound: [] };

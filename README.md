@@ -12,11 +12,11 @@ A lightweight, browser-based tool to check deck legality, calculate wildcard cos
 * **Commander Support:** Full support for 100+ card decks using smart batch processing.
 * **Export Clean Lists:** Separate copy buttons for **legal** and **illegal** cards, formatted for MTG Arena import.
 * **Double-Faced Card Support:** Properly handles cards with `//` syntax (e.g., *Ojer Taq, Deepest Foundation // Temple of Civilization*), displaying the full name while looking up the front face.
-* **Multi-Source Import:** Accepts decklists from MTG Arena, Moxfield, Archidekt, Goldfish, **Decked Builder**, and more — automatically parsing section headers like `Command Zone`, `Creatures(29)`, `Main Deck (99)`, etc.
+* **Multi-Source Import:** Accepts decklists from MTG Arena, Moxfield, Archidekt, Goldfish, **Decked Builder**, **ManaBox**, and more — automatically parsing section headers, set codes, and type/count labels.
 
 ## 🛠️ How to Use
 
-1. **Download:** Save the `index.html` file to your computer.
+1. **Download:** Save the `index.html` file to your computer (you can rename it to whatever you like).
 2. **Run:** Double-click the file to open it in any modern web browser (Chrome, Firefox, Edge, Safari).
 3. **Paste:** Copy your decklist from sites like Moxfield, Archidekt, Goldfish, or Decked Builder and paste it into the text area.
 4. **Analyze:** Select your format (e.g., Historic Brawl) and click **Analyze**.
@@ -40,6 +40,7 @@ The parser handles a variety of decklist formats:
 
 * **MTG Arena** — `Commander` / `Deck` / `Sideboard` headers
 * **Decked Builder** — `Command Zone`, `Main Deck (99)`, `Creatures(29)`, `Spells(33)`, `Lands(37)`, `Sideboard (4)`
+* **ManaBox** — `//Commander` / `//Deck` / `//Sideboard` headers, with `(SET) 123` collector info stripped automatically
 * **Generic** — `1 Card Name`, `1x Card Name`, or just `Card Name`
 * **Double-Faced Cards** — `1 Ojer Taq, Deepest Foundation // Temple of Civilization` (back face stripped for lookup, full name preserved in display and copy)
 
@@ -88,11 +89,28 @@ Sideboard (4)
 1 Deep Gnome Terramancer
 ```
 
+And ManaBox exports:
+
+```text
+//Commander
+1 Giada, Font of Hope (SNC) 14
+
+//Deck
+1 Angel of Sanctions (AKR) 1
+1 Sol Ring (CMR) 472
+1 Ojer Taq, Deepest Foundation // Temple of Civilization (LCI) 27
+30 Snow-Covered Plains (KHM) 277
+
+//Sideboard
+1 Deep Gnome Terramancer (CLB) 658
+```
+
 ## 📌 Changelog
 
 ### v6
-* **Double-Faced Card Handling:** Cards with `//` syntax now parse correctly — front face used for Scryfall lookup, full name displayed and preserved when copying.
-* **Decked Builder Support:** Parser now recognizes `Command Zone`, `Main Deck (99)`, `Creatures(29)`, `Spells(33)`, `Lands(37)`, and other type/count headers.
+* **Double-Faced Card Handling:** Cards with `//` syntax now parse correctly — front face used for Scryfall lookup, full name displayed and preserved when copying. Fixed map lookup so DFCs resolve properly against Scryfall's full card names.
+* **Decked Builder Support:** Parser now recognizes `Command Zone`, `Main Deck (99)`, `Creatures(29)`, `Spells(33)`, `Lands(37)`, and other type/count headers. Filters out "Built with Decked Builder" signature line.
+* **ManaBox Support:** Recognizes `//Commander`, `//Deck`, `//Sideboard` section headers and strips `(SET) 123` collector info from card lines.
 * **Separate Copy Buttons:** Legal and illegal cards can now be copied independently.
 * **Not Found in Summary:** Cards not found on Scryfall now appear in the legality summary count.
 
