@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MTG Arena Deck Analyzer v5</title>
+<title>MTG Arena Deck Analyzer v6</title>
 <style>
   :root {
     --bg-deep: #0d0f14;
@@ -84,14 +84,18 @@
   .mana { margin-left: 10px; font-size: 11px; color: var(--text-muted); letter-spacing: 1px; }
   .rarity-dot { width: 8px; height: 8px; border-radius: 50%; margin-left: 10px; }
 
-  /* Copy Button */
+  /* Copy Buttons */
+  .copy-btn-row { display: flex; gap: 8px; margin-top: 15px; }
   .copy-btn {
-    width: 100%; background: transparent; border: 1px solid var(--green); color: var(--green); border-radius: 8px;
-    padding: 10px; font-weight: 600; font-size: 13px; cursor: pointer; margin-top: 15px; display: none;
-    transition: all 0.2s;
+    flex: 1; background: transparent; border: 1px solid var(--green); color: var(--green); border-radius: 8px;
+    padding: 10px 6px; font-weight: 600; font-size: 12px; cursor: pointer; display: none;
+    transition: all 0.2s; text-align: center;
   }
   .copy-btn:hover { background: rgba(45, 212, 123, 0.1); }
   .copy-btn.ok { background: var(--green); color: #000; border-color: var(--green); }
+  .copy-btn.illegal-btn { border-color: var(--red); color: var(--red); }
+  .copy-btn.illegal-btn:hover { background: rgba(233, 69, 96, 0.1); }
+  .copy-btn.illegal-btn.ok { background: var(--red); color: #fff; border-color: var(--red); }
 
   /* Floating Image Preview (Follows Mouse) */
   #preview {
@@ -127,7 +131,15 @@
 Deck
 1 Sol Ring
 1 Arcane Signet
-1 Swords to Plowshares"></textarea>
+1 Swords to Plowshares
+
+Also supports Decked Builder exports:
+Command Zone
+Giada, Font of Hope
+
+Creatures(29)
+1 Angel of Sanctions
+1 Ojer Taq, Deepest Foundation // Temple of Civilization"></textarea>
       <div class="controls">
         <select id="fmt">
           <option value="historicbrawl" selected>Historic Brawl</option>
@@ -175,7 +187,10 @@ Deck
       <div class="panel">
         <label>Legality Check</label>
         <div id="legality-summary" style="margin-top:10px; font-size:14px;"></div>
-        <button id="copy-btn" class="copy-btn" onclick="copyLegal()">📋 Copy Legal Cards</button>
+        <div class="copy-btn-row">
+          <button id="copy-legal-btn" class="copy-btn" onclick="copyCards('legal')">📋 Copy Legal</button>
+          <button id="copy-illegal-btn" class="copy-btn illegal-btn" onclick="copyCards('illegal')">📋 Copy Illegal</button>
+        </div>
       </div>
       
     </div>
@@ -185,22 +200,62 @@ Deck
 <img id="preview" src="" alt="Card Preview">
 
 <script>
-// --- Core Logic ---
+// --- Parser ---
 
 function parse(text) {
   const lines = text.trim().split('\n'), cards = [];
   let sec = 'deck';
+
+  // Known section headers mapped to internal keys
+  const sectionMap = {
+    'commander': 'commander',
+    'command zone': 'commander',
+    'companion': 'companion',
+    'deck': 'deck',
+    'sideboard': 'sideboard',
+  };
+
+  // Matches known section headers + deckbuilder type headers, with optional count in parens
+  // e.g. "Command Zone", "Main Deck (99)", "Creatures(29)", "Sideboard (4)"
+  const sectionLineRe = /^(command zone|commander|companion|deck|sideboard|main deck|creatures?|spells?|lands?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?|battles?)(\s*\(\d+\))?$/i;
+
   for (let l of lines) {
     l = l.trim();
     if (!l) continue;
-    const lo = l.toLowerCase();
-    if (['commander','companion','deck','sideboard'].includes(lo)) { sec = lo; continue; }
+
+    // Check if line is a section header
+    const secMatch = l.match(sectionLineRe);
+    if (secMatch) {
+      const key = secMatch[1].toLowerCase();
+      if (sectionMap[key]) {
+        sec = sectionMap[key];
+      } else if (key === 'main deck') {
+        sec = 'deck';
+      }
+      // Type headers like "Creatures(29)" are cosmetic — keep current section
+      continue;
+    }
+
+    // Parse card line: "1 Card Name" or "1x Card Name" or just "Card Name"
     const m = l.match(/^(\d+)\s*x?\s+(.+)$/i);
-    if (m) cards.push({ qty: +m[1], name: m[2].trim(), sec });
-    else cards.push({ qty: 1, name: l, sec });
+    let qty = 1, rawName = l;
+    if (m) {
+      qty = +m[1];
+      rawName = m[2].trim();
+    }
+
+    // Handle double-faced cards: strip " // Back Face" for Scryfall lookup
+    // Preserve full name for display
+    const fullName = rawName;
+    const lookupName = rawName.includes(' // ') ? rawName.split(' // ')[0].trim() : rawName;
+
+    cards.push({ qty, name: lookupName, displayName: fullName, sec });
   }
   return cards;
 }
+
+
+// --- API ---
 
 async function fetchBatch(names) {
   const uniq = [...new Set(names)];
@@ -221,6 +276,9 @@ async function fetchBatch(names) {
   return results;
 }
 
+
+// --- Main ---
+
 async function run() {
   const txt = document.getElementById('deck').value;
   const fmt = document.getElementById('fmt').value;
@@ -234,7 +292,8 @@ async function run() {
   err.textContent = '';
   document.getElementById('deck-list').innerHTML = '';
   document.getElementById('stats-panel').classList.add('hidden');
-  document.getElementById('copy-btn').style.display = 'none';
+  document.getElementById('copy-legal-btn').style.display = 'none';
+  document.getElementById('copy-illegal-btn').style.display = 'none';
 
   try {
     const cards = parse(txt);
@@ -244,7 +303,7 @@ async function run() {
 
     // Analysis Buckets
     const res = { legal: [], illegal: [], notOnArena: [], banned: [], notFound: [] };
-    const stats = { m:0, r:0, u:0, c:0, curve: [0,0,0,0,0,0,0,0] }; // Curve 0-7+
+    const stats = { m:0, r:0, u:0, c:0, curve: [0,0,0,0,0,0,0,0] };
 
     const arenaFormats = ['historic', 'timeless', 'explorer', 'brawl', 'standard', 'alchemy', 'historicbrawl'];
 
@@ -271,7 +330,6 @@ async function run() {
       // 3. Stats Collection
       res.legal.push(cardObj);
       
-      // Rarity (Skip Basic Lands)
       if (!d.type_line.includes('Basic Land')) {
         const r = d.rarity; 
         if (r === 'mythic') stats.m += c.qty;
@@ -280,7 +338,6 @@ async function run() {
         else stats.c += c.qty;
       }
 
-      // Curve (Skip Lands)
       if (!d.type_line.includes('Land')) {
         let cmc = Math.floor(d.cmc || 0);
         if (cmc > 7) cmc = 7;
@@ -290,8 +347,9 @@ async function run() {
 
     render(res, stats, fmtLabel);
     
-    // Store legal cards globally for the copy function
+    // Store results globally for copy functions
     window._legalCards = res.legal;
+    window._illegalCards = [...res.notOnArena, ...res.banned, ...res.illegal, ...res.notFound];
 
   } catch (e) {
     console.error(e);
@@ -301,16 +359,15 @@ async function run() {
   }
 }
 
+
 // --- UI Rendering ---
 
 function render(res, stats, fmt) {
-  // 1. Update Stats
   document.getElementById('wc-m').textContent = stats.m;
   document.getElementById('wc-r').textContent = stats.r;
   document.getElementById('wc-u').textContent = stats.u;
   document.getElementById('wc-c').textContent = stats.c;
 
-  // 2. Draw Curve
   const maxH = Math.max(...stats.curve, 1);
   const chart = document.getElementById('curve-chart');
   chart.innerHTML = stats.curve.map((val, i) => {
@@ -323,9 +380,9 @@ function render(res, stats, fmt) {
       </div>`;
   }).join('');
 
-  // 3. Legality Summary
   const legDiv = document.getElementById('legality-summary');
-  const valid = res.illegal.length === 0 && res.banned.length === 0 && res.notOnArena.length === 0;
+  const totalIssues = res.illegal.length + res.banned.length + res.notOnArena.length + res.notFound.length;
+  const valid = totalIssues === 0;
   if (valid) {
     legDiv.innerHTML = `<span style="color:var(--green)">✓ Deck is Legal in ${fmt}</span>`;
   } else {
@@ -334,17 +391,19 @@ function render(res, stats, fmt) {
       ${res.notOnArena.length ? `<div>• ${res.notOnArena.length} Not on Arena</div>` : ''}
       ${res.banned.length ? `<div>• ${res.banned.length} Banned</div>` : ''}
       ${res.illegal.length ? `<div>• ${res.illegal.length} Not Legal</div>` : ''}
+      ${res.notFound.length ? `<div>• ${res.notFound.length} Not Found</div>` : ''}
     `;
   }
 
-  // Show Copy Button if there are legal cards
   if (res.legal.length > 0) {
-    document.getElementById('copy-btn').style.display = 'block';
+    document.getElementById('copy-legal-btn').style.display = 'block';
+  }
+  if (totalIssues > 0) {
+    document.getElementById('copy-illegal-btn').style.display = 'block';
   }
 
   document.getElementById('stats-panel').classList.remove('hidden');
 
-  // 4. Build List
   let h = '';
   if (res.notOnArena.length) h += section('Not On Arena', res.notOnArena, 'var(--purple)');
   if (res.banned.length) h += section('Banned', res.banned, 'var(--red)');
@@ -361,7 +420,6 @@ function render(res, stats, fmt) {
 
   document.getElementById('deck-list').innerHTML = h;
   
-  // Re-attach listeners for accordions
   document.querySelectorAll('.section-head').forEach(el => {
     el.addEventListener('click', () => {
       el.nextElementSibling.classList.toggle('closed');
@@ -381,11 +439,12 @@ function section(title, cards, color) {
     if (!mana && d.card_faces) mana = d.card_faces[0].mana_cost;
     mana = mana.replace(/[{}]/g, '');
 
-    // Add data-img attribute for hover
+    const label = c.displayName || c.name;
+
     return `
       <div class="row">
         <span class="qty">${c.qty}</span>
-        <a href="#" class="name" data-img="${img}">${c.name}</a>
+        <a href="#" class="name" data-img="${img}">${label}</a>
         <span class="mana">${mana}</span>
         <span class="rarity-dot r-${d.rarity}" title="${d.rarity}"></span>
         ${c.reason ? `<span style="color:var(--red);font-size:11px;margin-left:auto">${c.reason}</span>` : ''}
@@ -398,10 +457,10 @@ function section(title, cards, color) {
   </div>`;
 }
 
-function copyLegal() {
-  const cards = window._legalCards || [];
-  if (!cards.length) return;
-  
+
+// --- Copy Functions ---
+
+function formatCardsForCopy(cards) {
   const secs = {};
   for (const c of cards) { 
     const s = c.sec || 'deck'; 
@@ -410,18 +469,30 @@ function copyLegal() {
   }
   
   let t = '';
-  // Force Commander first
   if (secs['commander']) {
-    t += 'Commander\n' + secs['commander'].map(c=>`${c.qty} ${c.name}`).join('\n') + '\n\n';
+    t += 'Commander\n' + secs['commander'].map(c => `${c.qty} ${c.displayName || c.name}`).join('\n') + '\n\n';
     delete secs['commander'];
+  }
+  if (secs['companion']) {
+    t += 'Companion\n' + secs['companion'].map(c => `${c.qty} ${c.displayName || c.name}`).join('\n') + '\n\n';
+    delete secs['companion'];
   }
   for (const s in secs) {
     t += s.charAt(0).toUpperCase() + s.slice(1) + '\n';
-    t += secs[s].map(c=>`${c.qty} ${c.name}`).join('\n') + '\n\n';
+    t += secs[s].map(c => `${c.qty} ${c.displayName || c.name}`).join('\n') + '\n\n';
   }
+  return t.trim();
+}
 
-  navigator.clipboard.writeText(t.trim()).then(() => {
-    const b = document.getElementById('copy-btn');
+function copyCards(type) {
+  const cards = type === 'legal' ? (window._legalCards || []) : (window._illegalCards || []);
+  if (!cards.length) return;
+  
+  const text = formatCardsForCopy(cards);
+  const btnId = type === 'legal' ? 'copy-legal-btn' : 'copy-illegal-btn';
+  const b = document.getElementById(btnId);
+
+  navigator.clipboard.writeText(text).then(() => {
     const oldText = b.textContent;
     b.textContent = '✓ Copied!';
     b.classList.add('ok');
@@ -431,6 +502,7 @@ function copyLegal() {
     }, 2000);
   });
 }
+
 
 // --- Hover Logic (Follow Mouse) ---
 const preview = document.getElementById('preview');
@@ -453,17 +525,14 @@ document.addEventListener('mouseout', function(e) {
 
 document.addEventListener('mousemove', function(e) {
   if (preview.classList.contains('show')) {
-    // Offset slightly from cursor
     let x = e.clientX + 15;
     let y = e.clientY + 15;
     
-    // Prevent going off screen (right edge)
     if (x + 220 > window.innerWidth) {
-      x = e.clientX - 235; // Flip to left
+      x = e.clientX - 235;
     }
-    // Prevent going off screen (bottom edge)
     if (y + 300 > window.innerHeight) {
-        y = e.clientY - 300; // Flip to top
+        y = e.clientY - 300;
     }
     
     preview.style.left = x + 'px';
