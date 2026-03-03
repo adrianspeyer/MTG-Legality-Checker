@@ -44,6 +44,14 @@ The parser handles a variety of decklist formats:
 * **Generic** — `1 Card Name`, `1x Card Name`, or just `Card Name`
 * **Double-Faced Cards** — `1 Ojer Taq, Deepest Foundation // Temple of Civilization` (back face stripped for lookup, full name preserved in display and copy)
 
+## 🔒 Security
+
+* **Content Security Policy (CSP):** Embedded meta tag restricts all resource loading to known-safe origins. Works on GitHub Pages, local file, or any static host — no server config needed.
+* **XSS Prevention:** Zero `innerHTML` calls with user or API data; all dynamic content uses safe DOM APIs.
+* **Input Validation:** Decklist size, card count, name length, and quantity are all bounded to prevent abuse.
+* **URL Allowlisting:** Only HTTPS URLs from `cards.scryfall.io` and `c1.scryfall.com` are loaded as images.
+* **No Global State:** All application state is encapsulated in an IIFE closure.
+
 ## 🔧 Technical Details
 
 * **No Server Required:** Runs entirely in your browser using client-side JavaScript.
@@ -106,6 +114,18 @@ And ManaBox exports:
 ```
 
 ## 📌 Changelog
+
+### v7
+* **Security Hardening:** All dynamic content rendering replaced with safe DOM construction (`createElement` / `textContent`) to eliminate XSS vectors from API responses or crafted decklists.
+* **Content Security Policy:** Added CSP meta tag restricting image sources to Scryfall domains, API connections to `api.scryfall.com`, and blocking all external scripts, fonts, objects, and form actions.
+* **Image URL Validation:** Card preview images are validated against a Scryfall domain allowlist before rendering.
+* **API Response Validation:** Scryfall responses checked for expected data shapes before property access.
+* **Input Abuse Prevention:** Decklist input capped at 50 KB, max 500 card entries, card names limited to 200 characters, quantities clamped to 1-999, and a 2-second debounce on the Analyze button.
+* **No Global State Leakage:** All JavaScript wrapped in an IIFE; `window._legalCards` / `window._illegalCards` no longer exposed.
+* **Inline Handlers Removed:** All `onclick` attributes replaced with `addEventListener` bindings.
+* **Clipboard Error Handling:** Copy buttons gracefully handle clipboard failures with a fallback message.
+* **Referrer Policy:** Added `no-referrer` meta tag to prevent leaking page URLs to external services.
+* **Keyboard Shortcut:** Ctrl+Enter triggers analysis from the textarea.
 
 ### v6
 * **Double-Faced Card Handling:** Cards with `//` syntax now parse correctly — front face used for Scryfall lookup, full name displayed and preserved when copying. Fixed map lookup so DFCs resolve properly against Scryfall's full card names.
